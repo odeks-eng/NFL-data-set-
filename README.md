@@ -64,6 +64,22 @@ this season's depth charts under nflverse's new schema) aren't available
 yet. Full detail on what's used, what's skipped, and why in
 `reports/report.md`.
 
+### Automatic weekly refresh
+
+`.github/workflows/weekly-predictions.yml` runs the two commands above on
+GitHub's own schedule (Wednesdays, no laptop or chat session needs to stay
+open) and opens a pull request with the refreshed predictions CSV if
+anything changed -- nothing lands in the repo without a human merging it.
+
+GitHub only starts firing a `schedule` trigger once the workflow file is on
+the repository's **default branch**, so this stays dormant until PR #1 is
+merged into `main`. Until then, it can be run manually from the repo's
+Actions tab (`Run workflow`, the `workflow_dispatch` trigger) on this
+branch to test it. If the auto-PR step ever fails with a permissions error
+after merging, check Settings -> Actions -> General -> "Allow GitHub
+Actions to create pull requests" is enabled -- that's a separate repo
+setting from the workflow's own permissions block.
+
 ## Headline findings
 
 Snap share and target share (rolling 3-game / season-to-date) are the
