@@ -131,6 +131,8 @@ def main() -> None:
         # Context
         dict(feature="team_implied_total", raw_col="team_implied_total", target="fantasy_points_ppr", positions=ALL_SKILL),
         dict(feature="def_pass_epa_allowed_pre", raw_col="def_pass_epa_allowed_pre", target="receiving_yards", positions=WR_TE),
+        dict(feature="def_epa_allowed_to_position_pre", raw_col="def_epa_allowed_to_position_pre", target="receiving_yards", positions=WR_TE),
+        dict(feature="def_epa_allowed_to_position_pre", raw_col="def_epa_allowed_to_position_pre", target="fantasy_points_ppr", positions=RB),
         dict(feature="rest_days", raw_col="rest_days", target="fantasy_points_ppr", positions=ALL_SKILL),
     ]
 

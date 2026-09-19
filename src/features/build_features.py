@@ -42,6 +42,40 @@ def build_team_week_context(pbp: pd.DataFrame) -> pd.DataFrame:
     return ctx.rename(columns={"posteam": "team"})
 
 
+def build_position_lookup() -> pd.DataFrame:
+    """gsis_id+season -> WR/TE/RB/other, from weekly rosters. Used to find
+    *who* a defense's pass plays were thrown at, not just how many EPA they
+    allowed in aggregate."""
+    frames = []
+    for s in SEASONS:
+        wr = pd.read_parquet(RAW_DIR / f"weekly_rosters_{s}.parquet")
+        frames.append(wr[["season", "gsis_id", "position"]].dropna(subset=["gsis_id"]))
+    lookup = pd.concat(frames, ignore_index=True).drop_duplicates(subset=["season", "gsis_id"])
+    lookup["position_group"] = np.where(
+        lookup["position"].isin(["WR", "TE", "RB"]), lookup["position"], "OTHER"
+    )
+    return lookup[["season", "gsis_id", "position_group"]]
+
+
+def build_defense_week_context_by_target_position(pbp: pd.DataFrame, position_lookup: pd.DataFrame) -> pd.DataFrame:
+    """Same idea as build_defense_week_context, but split by the position
+    of the targeted receiver -- an aggregate 'pass defense EPA allowed'
+    can't tell you a defense is soft against TEs and tough against WRs;
+    this can."""
+    passes = pbp[pbp["play_type"] == "pass"].dropna(subset=["receiver_player_id"]).copy()
+    passes = passes.merge(
+        position_lookup, left_on=["season", "receiver_player_id"], right_on=["season", "gsis_id"], how="left"
+    )
+    passes["position_group"] = passes["position_group"].fillna("OTHER")
+
+    ctx = (
+        passes.groupby(["defteam", "season", "week", "position_group"])["epa"]
+        .agg(def_epa_allowed_to_position="mean", def_plays_faced_at_position="size")
+        .reset_index()
+    )
+    return ctx.rename(columns={"defteam": "team"})
+
+
 def build_defense_week_context(pbp: pd.DataFrame) -> pd.DataFrame:
     live = pbp[pbp["play_type"].isin(["pass", "run"])].copy()
     pass_epa = (
@@ -57,11 +91,13 @@ def build_defense_week_context(pbp: pd.DataFrame) -> pd.DataFrame:
     return ctx.rename(columns={"defteam": "team"})
 
 
-def add_causal_rolling(ctx: pd.DataFrame, group_col: str, cols: list[str]) -> pd.DataFrame:
+def add_causal_rolling(ctx: pd.DataFrame, group_cols: list[str] | str, cols: list[str]) -> pd.DataFrame:
     """Shift-then-roll so week N's context uses weeks < N only, within a season."""
-    ctx = ctx.sort_values([group_col, "season", "week"]).reset_index(drop=True)
+    if isinstance(group_cols, str):
+        group_cols = [group_cols]
+    ctx = ctx.sort_values([*group_cols, "season", "week"]).reset_index(drop=True)
     for col in cols:
-        g = ctx.groupby([group_col, "season"])[col]
+        g = ctx.groupby([*group_cols, "season"])[col]
         ctx[f"{col}_pre"] = g.transform(lambda s: s.shift(1).expanding(min_periods=1).mean())
     return ctx
 
@@ -136,6 +172,11 @@ def main() -> None:
     def_ctx = build_defense_week_context(pbp)
     def_ctx = add_causal_rolling(def_ctx, "team", ["def_pass_epa_allowed", "def_rush_epa_allowed"])
 
+    print("Building position-specific opponent defensive context (EPA allowed by WR/TE/RB target)...")
+    position_lookup = build_position_lookup()
+    def_ctx_pos = build_defense_week_context_by_target_position(pbp, position_lookup)
+    def_ctx_pos = add_causal_rolling(def_ctx_pos, ["team", "position_group"], ["def_epa_allowed_to_position"])
+
     print("Building red zone usage shares...")
     rz_usage, team_rz_pass, team_rz_rush = build_redzone_usage(pbp)
 
@@ -151,6 +192,16 @@ def main() -> None:
         columns={"team": "opponent_team"}
     )
     df = df.merge(opp_ctx, on=["opponent_team", "season", "week"], how="left")
+
+    # Position-specific matchup signal: for a WR, this is the opponent's rolling
+    # EPA allowed specifically on throws to WRs (not TEs, not RBs, not the
+    # team's pass defense in aggregate). Only meaningful for WR/TE/RB.
+    df["position_group"] = np.where(df["position"].isin(["WR", "TE", "RB"]), df["position"], "OTHER")
+    opp_ctx_pos = def_ctx_pos[["team", "season", "week", "position_group", "def_epa_allowed_to_position_pre"]].rename(
+        columns={"team": "opponent_team"}
+    )
+    df = df.merge(opp_ctx_pos, on=["opponent_team", "season", "week", "position_group"], how="left")
+    df = df.drop(columns=["position_group"])
 
     # Red zone shares (this week's actual usage -- will be rolled below, not used raw as a predictor)
     df = df.merge(rz_usage, on=["gsis_id", "season", "week"], how="left")

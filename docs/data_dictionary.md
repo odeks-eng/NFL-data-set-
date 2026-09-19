@@ -83,6 +83,7 @@ built the obvious ones.
 | `draft_round`, `draft_pick_overall` | Draft capital (career-level context, not week-varying) | nflverse `draft_picks` |
 | `team_pass_rate_pre`, `team_off_epa_per_play_pre`, `team_plays_pre` | This player's own team's rolling pace/tendency through the prior week | Derived from play-by-play |
 | `def_pass_epa_allowed_pre`, `def_rush_epa_allowed_pre` | **Opponent's** rolling defensive EPA allowed through the prior week — the matchup-difficulty signal | Derived from play-by-play |
+| `def_epa_allowed_to_position_pre` | Opponent's rolling EPA allowed specifically on throws to a receiver's own position group (WR/TE/RB) through the prior week — a finer-grained version of the aggregate pass-defense signal above. Only meaningful for WR/TE/RB rows (QB rows get the small "other" bucket — trick plays, eligible O-linemen — and shouldn't be read as a QB-specific matchup signal). Tested in `reports/report.md`: a small, real improvement over the aggregate version, but still a weak standalone predictor. | Derived from play-by-play, position via the `weekly_rosters` crosswalk |
 
 ## Known coverage limitations (see `data/processed/feature_coverage.csv` and `join_quality_log.csv` for exact numbers)
 

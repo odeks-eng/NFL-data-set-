@@ -121,9 +121,15 @@ report, so the numbers below are directly comparable to the tables above.
 
 | Model | Target | CV mean r (train seasons) | Holdout r | Holdout R² | Holdout RMSE vs. mean-baseline RMSE |
 |---|---|---|---|---|---|
-| WR/TE | receiving yards | 0.543 | **0.554** | 0.307 | 27.9 vs. 33.5 |
-| RB | rushing yards | 0.538 | **0.577** | 0.333 | 30.5 vs. 37.4 |
-| RB | fantasy points (PPR) | 0.535 | **0.599** | 0.357 | 6.41 vs. 7.99 |
+| WR/TE | receiving yards | 0.543 | **0.555** | 0.308 | 27.9 vs. 33.5 |
+| RB | rushing yards | 0.540 | **0.582** | 0.338 | 30.4 vs. 37.4 |
+| RB | fantasy points (PPR) | 0.538 | **0.599** | 0.357 | 6.41 vs. 7.99 |
+
+(Numbers above include `def_epa_allowed_to_position_pre`, the position-specific
+opponent-context feature added after the first pass of this model — see
+immediately below. Its effect was small: the WR/TE and RB-rushing holdout r
+each moved up by ~0.005, within noise for this sample size, but in the
+expected direction.)
 
 Holdout r tracks the CV mean closely for all three (no sign of the model
 overfitting to the training seasons), and every model beats its
@@ -259,6 +265,22 @@ works, which is the point of running both.
    leave-one-season-out CV into a small hyperparameter search once there's
    a specific accuracy target to hit rather than a fixed, deliberately
    conservative configuration.
+7. ~~Build opponent context at the position/alignment level~~ **Done**:
+   `def_epa_allowed_to_position_pre` (opponent's rolling EPA allowed
+   specifically on throws to a receiver's own position group — WR, TE, or
+   RB — instead of pass defense in aggregate) is in
+   `src/features/build_features.py`. It's a small, honest improvement, not
+   a breakthrough: for WR/TE receiving yards the bivariate holdout r rose
+   from 0.011 (aggregate) to 0.033 (position-specific) — better, but still
+   weak on its own — and it didn't crack the top-10 permutation importance
+   in any of the three multivariate models, where the aggregate
+   `def_pass_epa_allowed_pre` still does. Read this as: opponent pass
+   defense, even split by target position, just isn't a strong signal at
+   the individual-player weekly level with EPA as the yardstick. A defense
+   metric built at the alignment/coverage-shell level (slot vs. perimeter,
+   man vs. zone — both available in the already-pulled `ftn_charting` and
+   `pbp_participation` data, just not yet used this way) is the more
+   promising next attempt, not a finer position split.
 
 ## How to rerun this pipeline
 

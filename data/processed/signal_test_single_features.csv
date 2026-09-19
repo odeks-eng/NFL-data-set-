@@ -16,4 +16,6 @@ receiving_epa_r3,receiving_yards,WR/TE,0.093,11386,0.256,0.229,8714,0.252,0.262,
 ngs_rush_rush_yards_over_expected_per_att_season_pre,rushing_yards,RB,0.091,1417,0.139,0.17,2351,0.216,0.266,832
 team_implied_total,fantasy_points_ppr,QB/RB/WR/TE,0.625,18797,0.13,0.107,15844,0.118,0.088,5227
 def_pass_epa_allowed_pre,receiving_yards,WR/TE,-0.009,10863,0.013,0.018,9200,0.011,0.019,3033
+def_epa_allowed_to_position_pre,receiving_yards,WR/TE,-0.01,10859,0.054,0.046,9198,0.033,0.031,3033
+def_epa_allowed_to_position_pre,fantasy_points_ppr,RB,-0.014,4481,0.016,0.018,3832,-0.011,-0.019,1245
 rest_days,fantasy_points_ppr,QB/RB/WR/TE,-0.185,18797,-0.025,-0.023,15844,-0.012,-0.005,5227
