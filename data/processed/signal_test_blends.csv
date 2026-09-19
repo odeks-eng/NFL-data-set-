@@ -1,0 +1,7 @@
+feature_a,feature_b,target,positions,train_n,holdout_n,holdout_r_feature_a_alone,holdout_r_feature_b_alone,holdout_r_blend,blend_beats_best_single,blend_coef_a,blend_coef_b
+target_share_season_pre,ngs_rec_avg_separation_season_pre,receiving_yards,WR/TE,6051,1908,0.415,-0.086,0.413,False,234.1289,-1.5643
+target_share_season_pre,yards_per_route_run_season_pre,receiving_yards,WR/TE,8715,2864,0.53,0.129,0.53,False,228.1353,0.4586
+routes_run_proxy_season_pre,target_per_route_season_pre,receiving_yards,WR/TE,8729,2873,0.45,0.062,0.477,True,1.6164,70.7077
+offense_pct_season_pre,ngs_rush_rush_yards_over_expected_per_att_season_pre,rushing_yards,RB,2203,816,0.472,0.219,0.515,True,73.771,5.0536
+target_share_season_pre,team_implied_total,receiving_yards,WR/TE,8715,2864,0.53,0.056,0.529,False,227.533,0.762
+rz_target_share_season_pre,target_share_season_pre,receiving_yards,WR/TE,8689,2861,0.308,0.53,0.529,False,-3.3755,232.9012
