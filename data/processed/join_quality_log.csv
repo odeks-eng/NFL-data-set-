@@ -1,0 +1,13 @@
+source,rows,matched,unmatched,unmatched_pct
+ngs_passing,22579,2271,20308,89.94
+ngs_rushing,22579,2257,20322,90.0
+ngs_receiving,22579,5430,17149,75.95
+snap_counts [source-side: raw rows -> gsis_id via pfr_id crosswalk],106004,68457,37547,35.42
+pfr_advstats_pass [source-side: raw rows -> gsis_id via pfr_id crosswalk],2788,2633,155,5.56
+pfr_advstats_rec [source-side: raw rows -> gsis_id via pfr_id crosswalk],18202,16755,1447,7.95
+pfr_advstats_rush [source-side: raw rows -> gsis_id via pfr_id crosswalk],9503,8774,729,7.67
+injuries (row present on that week's report at all; report_status is separately often blank for full-participation players -- that's not a join failure),22579,4042,18537,82.1
+depth_charts,22579,21212,1367,6.05
+"routes_run_proxy (0 is a legitimate value for a play-caller/OL/DEF row, not a miss)",22579,22161,418,1.85
+schedule_context (team-week join),22579,22579,0,0.0
+draft_picks (undrafted players legitimately have no match),22579,18261,4318,19.12
