@@ -17,6 +17,7 @@ out-of-sample.
 | Feature-engineered dataset (rolling windows, causal) used for signal testing | [`data/processed/player_week_features.parquet`](data/processed/player_week_features.parquet) |
 | Join-quality / coverage logs (unmatched records) | `data/processed/join_quality_log.csv`, `feature_coverage.csv` |
 | Signal-testing results (single features + blends, out-of-sample) | `data/processed/signal_test_single_features.csv`, `signal_test_blends.csv` |
+| Multivariate model results (CV, holdout, permutation importance) | `data/processed/model_summary.csv`, `model_cv_*.csv`, `model_importance_*.csv` |
 | Written report: top signals, blends that worked/didn't, known weaknesses, next steps | [`reports/report.md`](reports/report.md) |
 | Pipeline code (rerunnable) | `src/` |
 
@@ -39,19 +40,28 @@ python -m src.ingest.pull_all            # -> data/raw/ (gitignored, ~110MB)
 python -m src.build_player_week          # -> data/processed/player_week_merged.parquet
 python -m src.features.build_features    # -> data/processed/player_week_features.parquet
 python -m src.signals.signal_testing     # -> data/processed/signal_test_*.csv
+python -m src.signals.model              # -> multivariate GBM model, data/processed/model_*.csv
 ```
 
 `src/config.py` controls the season range and the train/holdout split used
 in signal testing.
 
-## Headline finding
+## Headline findings
 
 Snap share and target share (rolling 3-game / season-to-date) are the
 strongest and most stable single signals in this dataset for predicting
-next-week receiving yards / fantasy points. Two blended features beat every
-single input they were built from, out-of-sample: **snap share × rush
-yards over expected per attempt** (RB rushing yards) and **route
+next-week receiving yards / fantasy points. Two hand-built blends beat
+every single input they were built from, out-of-sample: **snap share ×
+rush yards over expected per attempt** (RB rushing yards) and **route
 participation × targets-per-route** (WR/TE receiving yards, though this one
-rides on a free-data route proxy — see caveats). Full ranked results,
-including the blends and single features that *didn't* help, are in
-[`reports/report.md`](reports/report.md).
+rides on a free-data route proxy — see caveats).
+
+A multivariate gradient-boosted model combining all 78 pre-kickoff features
+beats every single feature and hand-built blend out-of-sample on all three
+targets tested — most clearly for RB rushing yards (holdout r = 0.577 vs.
+0.515 for the best 2-feature blend) — and surfaces one signal the simpler
+tests couldn't: **draft capital (`draft_pick_overall`)** ranks as a top-3
+predictor in every model, even after controlling for current usage.
+
+Full ranked results, including the blends and single features that
+*didn't* help, are in [`reports/report.md`](reports/report.md).

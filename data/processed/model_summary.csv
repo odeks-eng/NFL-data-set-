@@ -1,0 +1,4 @@
+name,target,positions,train_n,holdout_n,cv_mean_pearson_r,holdout_pearson_r,holdout_r2,holdout_rmse,baseline_rmse
+wr_te_receiving_yards,receiving_yards,WR/TE,9771,3220,0.543,0.554,0.307,27.91,33.52
+rb_rushing_yards,rushing_yards,RB,4095,1343,0.538,0.577,0.333,30.53,37.4
+rb_fantasy_points_ppr,fantasy_points_ppr,RB,4095,1343,0.535,0.599,0.357,6.41,7.99

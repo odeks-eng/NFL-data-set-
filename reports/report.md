@@ -104,6 +104,87 @@ each signal should actually be used:
   toward a positional/team prior before they're bet-worthy, not raw
   3-game averages.
 
+## Multivariate model — does combining everything beat the best blend?
+
+Everything above is a correlation or a 2-feature linear blend, deliberately
+kept simple so each comparison is auditable. `src/signals/model.py` takes
+the natural next step: a gradient-boosted tree
+(`HistGradientBoostingRegressor`) trained on all 78 pre-kickoff predictors
+at once (every `_r3`/`_r5`/`_season_pre`/`_pre` column plus context —
+market lines, rest, weather, injury/depth-chart status, draft capital).
+
+**Validation, kept conservative given the sample sizes:** leave-one-season-
+out cross-validation across 2021–2023 (train on two seasons, validate on
+the third, rotate), then a single final fit on all of 2021–2023 scored once
+on the untouched 2024 holdout — the same split used everywhere else in this
+report, so the numbers below are directly comparable to the tables above.
+
+| Model | Target | CV mean r (train seasons) | Holdout r | Holdout R² | Holdout RMSE vs. mean-baseline RMSE |
+|---|---|---|---|---|---|
+| WR/TE | receiving yards | 0.543 | **0.554** | 0.307 | 27.9 vs. 33.5 |
+| RB | rushing yards | 0.538 | **0.577** | 0.333 | 30.5 vs. 37.4 |
+| RB | fantasy points (PPR) | 0.535 | **0.599** | 0.357 | 6.41 vs. 7.99 |
+
+Holdout r tracks the CV mean closely for all three (no sign of the model
+overfitting to the training seasons), and every model beats its
+mean-baseline RMSE by 15–20%.
+
+**Compared to the single-feature and blend results earlier in this report:**
+
+- **WR/TE receiving yards:** best single feature was `target_share_season_pre`
+  at r = 0.530. The full model reaches **0.554** — a real but modest gain
+  (R² goes from ~0.28 to 0.307). Combining everything helps only a little
+  once target share is already known, echoing the "blend didn't beat target
+  share alone" pattern from the 2-feature tests above.
+- **RB rushing yards:** best single feature was `rz_carry_share_season_pre`
+  (r = 0.471); best hand-built blend was snap share × RYOE/att (r = 0.515).
+  The full model reaches **0.577** — this is the clearest win for going
+  multivariate. RB rushing production is genuinely multi-causal (volume,
+  per-touch efficiency, and — per the importance ranking below — draft
+  capital as a durable talent signal), and a 2-feature linear blend
+  couldn't capture all of that at once.
+- **RB fantasy points (PPR):** best single feature was `offense_pct_r3`
+  (r = 0.552). The full model reaches **0.599**, a modest gain in the same
+  direction as receiving yards.
+
+**What the model is actually using** (holdout permutation importance —
+more trustworthy than the built-in impurity importances, which are biased
+toward high-cardinality features; full lists in
+`data/processed/model_importance_*.csv`):
+
+- Usage dominates everywhere: `target_share_season_pre`,
+  `fantasy_points_ppr_season_pre`, and `offense_pct_r3`/`_r5` are the top or
+  near-top feature in all three models — consistent with the single-feature
+  results, not a contradiction of them.
+- **`draft_pick_overall` shows up as the #2 or #3 feature in every model** —
+  a finding the bivariate tests never surfaced because it's a static,
+  slow-moving context variable rather than a weekly one. Earlier draft
+  picks (lower `draft_pick_overall`) predict higher output even after
+  controlling for current usage, i.e. draft capital is carrying some
+  durable talent signal beyond what's captured in this week's role. Worth
+  testing on its own as a standalone context feature going forward.
+- `routes_run_proxy` (WR/TE) and `ngs_rush_rush_yards_over_expected_per_att`
+  (RB) both place in the top handful — the same two features behind the
+  blends that beat their single inputs earlier in this report, now
+  confirmed to matter inside a full model too, not just in an isolated
+  2-feature test.
+- `def_pass_epa_allowed_pre` (opponent pass defense) appears with a small
+  but non-zero importance in the RB fantasy-points model, despite showing
+  ~zero correlation as a standalone feature earlier. This is a legitimate
+  and expected pattern, not a contradiction: a weak marginal signal can
+  still contribute inside a multivariate model once the dominant usage
+  features are already accounted for — exactly the kind of feature a
+  bivariate test is the wrong tool to evaluate.
+
+**Reading on this**: treat the multivariate numbers as the best current
+estimate of the ceiling for this feature set — real, moderate, out-of-sample
+lift over the best single feature or hand-built blend, driven mostly by
+usage plus a genuinely new signal (draft capital) that the earlier
+bivariate pass had no way to surface. It is not a large enough jump to
+suggest the single-feature signals in the rest of this report are wrong or
+unnecessary — they're still the right tool for auditing *why* the model
+works, which is the point of running both.
+
 ## Known weaknesses
 
 1. **`routes_run_proxy` is not real route-participation data.** It counts
@@ -131,12 +212,13 @@ each signal should actually be used:
    2021–2024 as a result. This is very likely a temporary state of the
    specific mirror snapshot this session could reach, not a real gap —
    re-running `src/ingest/pull_all.py` later should pick up 2025 for free.
-5. **Everything here is a bivariate test.** These are correlations and
-   2-feature linear blends, deliberately kept simple and transparent so
-   the "does A beat B" comparisons are easy to audit. A tree-based
-   multivariate model (see Next Steps) would almost certainly do better
-   than any single number above — that's expected, and not itself
-   evidence these simpler signals are wrong.
+5. ~~Everything here is a bivariate test.~~ **Update:** a multivariate
+   gradient-boosted model is now included (see the section above) and, as
+   expected, beats every single feature and hand-built blend out-of-sample
+   — most clearly for RB rushing yards (0.577 vs. 0.515 for the best
+   blend). The single-feature/blend tests remain in this report because
+   they're what makes the model's behavior auditable, not because they're
+   competitive with it on raw predictive power.
 6. **Postseason weeks are excluded** from all of the above (kept in the
    merged dataset, dropped before rolling/signal-testing) because the
    single-elimination structure and bye-week gaps break the weekly-cadence
@@ -168,11 +250,15 @@ each signal should actually be used:
    rate, or a "floor" outcome like hitting a fixed yardage threshold)
    before concluding separation is un-informative — it may simply be the
    wrong target variable for what separation actually predicts.
-6. **Move from bivariate correlations to a proper multivariate model**
-   (gradient-boosted trees are the natural choice given the mix of usage/
-   efficiency/context features here) once the team is comfortable with
-   what each input signal does and doesn't do on its own — that context is
-   exactly what this report is for.
+6. ~~Move from bivariate correlations to a proper multivariate model~~
+   **Done** (see above). Natural follow-ups on the model itself: test
+   `draft_pick_overall` as a standalone context feature now that it's
+   shown up as a top-3 predictor; try SHAP interaction values to see
+   whether opponent-defense and usage features interact (permutation
+   importance only shows marginal contribution); and widen the
+   leave-one-season-out CV into a small hyperparameter search once there's
+   a specific accuracy target to hit rather than a fixed, deliberately
+   conservative configuration.
 
 ## How to rerun this pipeline
 
@@ -182,6 +268,7 @@ python -m src.ingest.pull_all            # pulls all free sources into data/raw/
 python -m src.build_player_week          # merges into data/processed/player_week_merged.parquet
 python -m src.features.build_features    # adds engineered features -> player_week_features.parquet
 python -m src.signals.signal_testing     # writes the two CSVs behind the tables above
+python -m src.signals.model              # multivariate GBM model + permutation importance
 ```
 
 Each step prints its own join/coverage diagnostics; `src/config.py` is the
