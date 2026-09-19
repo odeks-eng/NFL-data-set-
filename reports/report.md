@@ -27,6 +27,30 @@ power" are the **holdout** numbers unless stated otherwise.
 | 8 | `rz_carry_share_season_pre` | RB rushing yards | 0.47 | 0.42 | Decent predictive power, but noticeably less stable than overall snap/target share — red-zone opportunity swings more week to week. |
 | 9 | `rz_target_share_season_pre` | WR/TE receiving yards | 0.31 | **0.14** | Weakest stability of any usage metric tested. Red zone target share is close to noise from one week to the next, even though it has *some* predictive value on average — a good example of "average signal, bad bet-by-bet reliability." |
 | 10 | `receiving_epa_r3` | WR/TE receiving yards | 0.25 | 0.09 | Low stability — EPA is a noisy per-play stat that takes a large sample to stabilize; a 3-game rolling window is not enough. |
+| — | `draft_pick_overall` | RB fantasy points (PPR) | **−0.30** | 1.00* | *Stability is a mechanical artifact, not a finding — see note below. Added after the multivariate model surfaced it; tested standalone here for the first time. |
+
+**`draft_pick_overall` standalone, added after the multivariate model flagged it:**
+holdout r = −0.24 (WR/TE receiving yards), −0.27 (RB rushing yards), **−0.30** (RB PPR
+fantasy points) — negative because a *lower* pick number (drafted earlier) predicts
+*more* production. That's a genuinely strong standalone signal, stronger than several
+of the ranked usage metrics above it, and one the original signal-testing pass never
+tested because it's a static per-player feature rather than a weekly one — it only
+turned up because the multivariate model's permutation importance flagged it first.
+Its "stability" of 1.00 in the table is not a real finding: the raw value literally
+never changes within a player's career, so a lag-1 autocorrelation of it against
+itself is mechanically 1 — reported for completeness, not as evidence it's a
+uniquely reliable signal.
+
+**Does it add anything beyond current usage, or is it just "early picks get more
+usage anyway"?** Blended with the top usage feature for each target (same
+methodology as the blend table below): `target_share_season_pre` + `draft_pick_overall`
+→ holdout r = **0.514** vs. 0.512 for target share alone; `offense_pct_season_pre` +
+`draft_pick_overall` → **0.528** vs. 0.525 (rushing yards) and **0.543** vs. 0.537 (PPR
+points). Small gains in all three, consistently in the same direction — draft capital
+carries real independent information beyond current-season usage, not just a proxy for
+who's getting the ball. This is the same conclusion the multivariate model's
+permutation importance implied, now confirmed with a much simpler, fully auditable
+bivariate test.
 
 ## Blends that beat every single input, out-of-sample (2024 holdout)
 
@@ -257,14 +281,16 @@ works, which is the point of running both.
    before concluding separation is un-informative — it may simply be the
    wrong target variable for what separation actually predicts.
 6. ~~Move from bivariate correlations to a proper multivariate model~~
-   **Done** (see above). Natural follow-ups on the model itself: test
-   `draft_pick_overall` as a standalone context feature now that it's
-   shown up as a top-3 predictor; try SHAP interaction values to see
-   whether opponent-defense and usage features interact (permutation
-   importance only shows marginal contribution); and widen the
-   leave-one-season-out CV into a small hyperparameter search once there's
-   a specific accuracy target to hit rather than a fixed, deliberately
-   conservative configuration.
+   **Done** (see above). ~~Test `draft_pick_overall` as a standalone
+   context feature~~ **Done** (see the ranked-signals section above) —
+   it's a real, moderately strong standalone signal (holdout r as low as
+   −0.30) that adds independent information beyond usage, not just a
+   proxy for playing time. Remaining follow-ups on the model itself: try
+   SHAP interaction values to see whether opponent-defense and usage
+   features interact (permutation importance only shows marginal
+   contribution); and widen the leave-one-season-out CV into a small
+   hyperparameter search once there's a specific accuracy target to hit
+   rather than a fixed, deliberately conservative configuration.
 7. ~~Build opponent context at the position/alignment level~~ **Done**:
    `def_epa_allowed_to_position_pre` (opponent's rolling EPA allowed
    specifically on throws to a receiver's own position group — WR, TE, or

@@ -19,3 +19,6 @@ def_pass_epa_allowed_pre,receiving_yards,WR/TE,-0.009,10863,0.013,0.018,9200,0.0
 def_epa_allowed_to_position_pre,receiving_yards,WR/TE,-0.01,10859,0.054,0.046,9198,0.033,0.031,3033
 def_epa_allowed_to_position_pre,fantasy_points_ppr,RB,-0.014,4481,0.016,0.018,3832,-0.011,-0.019,1245
 rest_days,fantasy_points_ppr,QB/RB/WR/TE,-0.185,18797,-0.025,-0.023,15844,-0.012,-0.005,5227
+draft_pick_overall,receiving_yards,WR/TE,1.0,9465,-0.237,-0.265,7738,-0.237,-0.26,2711
+draft_pick_overall,rushing_yards,RB,1.0,3922,-0.279,-0.322,3264,-0.274,-0.278,1068
+draft_pick_overall,fantasy_points_ppr,RB,1.0,3922,-0.294,-0.328,3264,-0.303,-0.308,1068

@@ -134,6 +134,13 @@ def main() -> None:
         dict(feature="def_epa_allowed_to_position_pre", raw_col="def_epa_allowed_to_position_pre", target="receiving_yards", positions=WR_TE),
         dict(feature="def_epa_allowed_to_position_pre", raw_col="def_epa_allowed_to_position_pre", target="fantasy_points_ppr", positions=RB),
         dict(feature="rest_days", raw_col="rest_days", target="fantasy_points_ppr", positions=ALL_SKILL),
+        # Draft capital -- static per-player, never tested standalone before (only showed up
+        # inside the multivariate model). Note: its "stability" is mechanically ~1.0 since the
+        # raw value doesn't change week to week within a career -- that's an artifact of the
+        # metric, not a finding, and is called out as such in reports/report.md.
+        dict(feature="draft_pick_overall", raw_col="draft_pick_overall", target="receiving_yards", positions=WR_TE),
+        dict(feature="draft_pick_overall", raw_col="draft_pick_overall", target="rushing_yards", positions=RB),
+        dict(feature="draft_pick_overall", raw_col="draft_pick_overall", target="fantasy_points_ppr", positions=RB),
     ]
 
     print("\n=== Single-feature signal test ===")
@@ -149,6 +156,11 @@ def main() -> None:
         ("offense_pct_season_pre", "ngs_rush_rush_yards_over_expected_per_att_season_pre", "rushing_yards", RB),
         ("target_share_season_pre", "team_implied_total", "receiving_yards", WR_TE),
         ("rz_target_share_season_pre", "target_share_season_pre", "receiving_yards", WR_TE),
+        # Does draft capital add independent information beyond current usage,
+        # or is it redundant with "early picks get more usage anyway"?
+        ("target_share_season_pre", "draft_pick_overall", "receiving_yards", WR_TE),
+        ("offense_pct_season_pre", "draft_pick_overall", "rushing_yards", RB),
+        ("offense_pct_season_pre", "draft_pick_overall", "fantasy_points_ppr", RB),
     ]
     blend_rows = [evaluate_blend(df, a, b, t, pos) for a, b, t, pos in blend_specs]
     blend_results = pd.DataFrame(blend_rows)

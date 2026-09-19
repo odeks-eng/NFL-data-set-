@@ -5,3 +5,6 @@ routes_run_proxy_season_pre,target_per_route_season_pre,receiving_yards,WR/TE,87
 offense_pct_season_pre,ngs_rush_rush_yards_over_expected_per_att_season_pre,rushing_yards,RB,2203,816,0.472,0.219,0.515,True,73.771,5.0536
 target_share_season_pre,team_implied_total,receiving_yards,WR/TE,8715,2864,0.53,0.056,0.529,False,227.533,0.762
 rz_target_share_season_pre,target_share_season_pre,receiving_yards,WR/TE,8689,2861,0.308,0.53,0.529,False,-3.3755,232.9012
+target_share_season_pre,draft_pick_overall,receiving_yards,WR/TE,6998,2449,0.512,-0.234,0.514,True,223.063,-0.0282
+offense_pct_season_pre,draft_pick_overall,rushing_yards,RB,2775,971,0.525,-0.264,0.528,True,79.9248,-0.0408
+offense_pct_season_pre,draft_pick_overall,fantasy_points_ppr,RB,2775,971,0.537,-0.294,0.543,True,18.311,-0.0101
