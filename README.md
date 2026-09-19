@@ -46,6 +46,24 @@ python -m src.signals.model              # -> multivariate GBM model, data/proce
 `src/config.py` controls the season range and the train/holdout split used
 in signal testing.
 
+## Forward-looking predictions (current season)
+
+```bash
+python -m src.predict.pull_current_season 2026   # refresh this season's raw data
+python -m src.predict.live_predict 2026           # auto-detects the next unplayed week
+```
+
+This reuses the exact same merge/feature/model code as the historical
+pipeline above, just pointed at the current, in-progress season instead of
+a historical holdout. Output: `data/processed/predictions_<season>_week<N>.csv`
+(predicted receiving yards, rushing yards, and RB PPR fantasy points per
+active skill-position player). Read the caveats it prints before using the
+numbers -- early in a season there's very little in-season data to build
+rolling features from, and a couple of sources (route-participation data,
+this season's depth charts under nflverse's new schema) aren't available
+yet. Full detail on what's used, what's skipped, and why in
+`reports/report.md`.
+
 ## Headline findings
 
 Snap share and target share (rolling 3-game / season-to-date) are the

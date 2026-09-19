@@ -215,6 +215,87 @@ suggest the single-feature signals in the rest of this report are wrong or
 unnecessary — they're still the right tool for auditing *why* the model
 works, which is the point of running both.
 
+## Forward-looking predictions on the current (2026) season
+
+Everything above is a backtest: it answers "if we'd known this going into a
+historical week, how well would it have predicted that week's outcome?"
+`src/predict/live_predict.py` is the forward-looking counterpart -- it
+answers "what does the model predict for this Sunday?" using the exact
+same merge logic, feature engineering, and model architecture already
+validated above, just pointed at the current season's next unplayed week.
+
+**How it works:**
+1. `src/build_player_week.py` and `src/features/build_features.py` were
+   generalized to take an explicit `seasons` argument instead of a hardcoded
+   constant, so the same code serves both the historical research path and
+   a single live season. **Verified byte-identical output** on the
+   2021-2024 research data before and after this change (`md5sum` on the
+   merged and feature parquet files) -- the refactor changed nothing about
+   the results reported above.
+2. The current season's own weekly box scores (what a real `player_stats`
+   file would give us) don't exist yet for an in-progress season in this
+   mirror. `src/predict/pbp_weekly_stats.py` derives the same columns
+   directly from play-by-play instead. **Validated against the real 2024
+   `player_stats` file** before trusting it on 2026: receptions and
+   passing yards match exactly, receiving/rushing yards correlate at
+   0.9996/1.0000, and target share needed one fix (the denominator has to
+   be *targeted* pass attempts, not every pass attempt -- throwaways and
+   broken plays can have no assigned receiver) before it matched the
+   official numbers. Known simplification: fumbles aren't attributed to a
+   specific player and two-point conversions are ignored, so fantasy-point
+   estimates are close but not exact (mean absolute difference 0.13 points
+   against the real 2024 file, one outlier at 10.1 points on what looks
+   like a lateral-play edge case out of 5,326 rows checked).
+3. For the upcoming (not-yet-played) week, a "shell" row is built per
+   active roster skill-position player with the actual box score left
+   unknown and team/opponent filled in from the schedule -- this gives the
+   pipeline something to attach pre-game context to. Every rolling feature
+   for that row is computed the same causal way as everywhere else in this
+   report: only games already played.
+4. The production model is retrained on **all** of 2021-2024 (no holdout
+   reserved -- the holdout's job was validating the architecture, already
+   done above) using `src/signals/model.py`'s existing training code,
+   unchanged. It is deliberately **not** retrained on any pbp-derived
+   approximation of 2025/2026 box scores -- mixing a real, audited
+   training target with an approximated one risks a subtle bias the
+   backtest numbers above wouldn't catch. The pbp-derived data is only used
+   to build the *current* season's own rolling context, never to expand
+   what the model learned from.
+
+**What actually happened running it for 2026, week 2** (one game of the
+season played at the time): output landed in
+`data/processed/predictions_2026_week2.csv`. Sanity check, not a claim of
+accuracy this early: the top of the WR/TE list (DJ Moore, Mike Evans,
+Justin Jefferson, Amon-Ra St. Brown) and the RB list (Jonathan Taylor,
+Derrick Henry, Christian McCaffrey, Ashton Jeanty) are exactly the players
+you'd expect near the top, all predictions landed in a sane range with
+nothing negative or absurd, and opposing backs facing each other that week
+(e.g. Jonathan Taylor vs. Kansas City, Kenneth Walker III vs. Indianapolis)
+correctly show up on opposite sides of the same matchup.
+
+**Two things broke on the current season's data and were handled, not
+papered over:**
+- `depth_charts_2026.parquet` comes back in a **completely different
+  schema** than every prior season (no `season`/`week`/`depth_position`
+  columns at all -- nflverse appears to have switched depth-chart sources
+  for the current season). `merge_depth_charts()` now detects this and
+  skips the file with a printed warning instead of crashing, so
+  depth-chart context is silently absent from 2026 predictions rather than
+  breaking the run. If nflverse settles on the new schema, mapping it in
+  is a small follow-up.
+- `pbp_participation` (the source `routes_run_proxy` is built from) isn't
+  published yet for 2026 -- normal publication lag, already handled the
+  same way the pipeline handles any missing source. `routes_run_proxy`,
+  `target_per_route`, and `yards_per_route_run` are null for every 2026
+  prediction as a result.
+
+**Read the caveats the script prints on every run before trusting its
+output**: with only 1-2 games played, every rolling feature is built from
+a tiny sample, and predictions this early in a season should be read as
+directional, not final -- the whole point of validating "stability" earlier
+in this report is that some of these signals take several games to mean
+anything.
+
 ## Known weaknesses
 
 1. **`routes_run_proxy` is not real route-participation data.** It counts

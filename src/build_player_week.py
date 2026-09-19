@@ -6,6 +6,14 @@ structure that breaks the weekly cadence rolling-window features assume),
 but everything is merged first so the join-quality stats below are honest
 about the full pull.
 
+Every merge function takes an explicit `seasons` list (defaulting to
+`config.SEASONS`, the validated 2021-2024 research scope) so the same
+pipeline can be reused for a live/current season with a different backbone
+-- see src/predict/live_predict.py, which calls run_pipeline() directly
+with seasons=[current_season] and a play-by-play-derived backbone instead
+of the (not-yet-published, for an in-progress season) official player_stats
+file.
+
 Run: python -m src.build_player_week
 """
 
@@ -18,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.config import FTN_MIN_SEASON, PROCESSED_DIR, RAW_DIR, SEASONS  # noqa: E402
+from src.config import PROCESSED_DIR, RAW_DIR, SEASONS  # noqa: E402
 
 pd.set_option("display.max_columns", None)
 
@@ -34,18 +42,18 @@ def _log_unmatched(name: str, total: int, matched: int) -> None:
     print(f"  {name}: {matched}/{total} matched ({pct:.1f}% unmatched)")
 
 
-def load_backbone() -> pd.DataFrame:
+def load_backbone(seasons: list[int]) -> pd.DataFrame:
     """player_stats is the target-outcome table and the player-week backbone."""
-    frames = [pd.read_parquet(RAW_DIR / f"player_stats_{s}.parquet") for s in SEASONS]
+    frames = [pd.read_parquet(RAW_DIR / f"player_stats_{s}.parquet") for s in seasons]
     df = pd.concat(frames, ignore_index=True)
     df = df.rename(columns={"player_id": "gsis_id"})
     return df
 
 
-def build_id_crosswalk() -> pd.DataFrame:
+def build_id_crosswalk(seasons: list[int]) -> pd.DataFrame:
     """gsis_id <-> pfr_id per season, from weekly rosters (most complete ID table)."""
     frames = []
-    for s in SEASONS:
+    for s in seasons:
         wr = pd.read_parquet(RAW_DIR / f"weekly_rosters_{s}.parquet")
         cw = (
             wr[["season", "gsis_id", "pfr_id", "espn_id", "sleeper_id", "position"]]
@@ -56,10 +64,10 @@ def build_id_crosswalk() -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def merge_ngs(df: pd.DataFrame) -> pd.DataFrame:
+def merge_ngs(df: pd.DataFrame, seasons: list[int]) -> pd.DataFrame:
     for stat_type, prefix in [("passing", "ngs_pass"), ("rushing", "ngs_rush"), ("receiving", "ngs_rec")]:
         ngs = pd.read_parquet(RAW_DIR / f"ngs_{stat_type}.parquet")
-        ngs = ngs[ngs["season"].isin(SEASONS) & (ngs["week"] > 0)].copy()
+        ngs = ngs[ngs["season"].isin(seasons) & (ngs["week"] > 0)].copy()
         keep_cols = [c for c in ngs.columns if c not in ("player_display_name", "player_position", "team_abbr",
                                                           "player_first_name", "player_last_name",
                                                           "player_jersey_number", "player_short_name",
@@ -99,9 +107,19 @@ def merge_via_pfr_crosswalk(df: pd.DataFrame, source: pd.DataFrame, source_name:
     return df
 
 
-def merge_snap_counts(df: pd.DataFrame, crosswalk: pd.DataFrame) -> pd.DataFrame:
-    frames = [pd.read_parquet(RAW_DIR / f"snap_counts_{s}.parquet") for s in SEASONS]
-    sc = pd.concat(frames, ignore_index=True)
+def _load_optional(paths: list[Path]) -> pd.DataFrame | None:
+    """Some per-season files may not exist yet for an in-progress season
+    (e.g. PFR advanced stats lag a few days behind the game). Skip missing
+    ones instead of erroring."""
+    frames = [pd.read_parquet(p) for p in paths if p.exists()]
+    return pd.concat(frames, ignore_index=True) if frames else None
+
+
+def merge_snap_counts(df: pd.DataFrame, crosswalk: pd.DataFrame, seasons: list[int]) -> pd.DataFrame:
+    sc = _load_optional([RAW_DIR / f"snap_counts_{s}.parquet" for s in seasons])
+    if sc is None:
+        print("  snap_counts: SKIPPED (no files found for these seasons)")
+        return df
     return merge_via_pfr_crosswalk(
         df, sc, "snap_counts",
         ["offense_snaps", "offense_pct", "defense_snaps", "defense_pct", "st_snaps", "st_pct"],
@@ -109,7 +127,7 @@ def merge_snap_counts(df: pd.DataFrame, crosswalk: pd.DataFrame) -> pd.DataFrame
     )
 
 
-def merge_pfr_advstats(df: pd.DataFrame, crosswalk: pd.DataFrame) -> pd.DataFrame:
+def merge_pfr_advstats(df: pd.DataFrame, crosswalk: pd.DataFrame, seasons: list[int]) -> pd.DataFrame:
     specs = {
         "pass": ["passing_bad_throws", "passing_bad_throw_pct", "times_sacked", "times_blitzed",
                  "times_hurried", "times_hit", "times_pressured", "times_pressured_pct"],
@@ -119,17 +137,21 @@ def merge_pfr_advstats(df: pd.DataFrame, crosswalk: pd.DataFrame) -> pd.DataFram
                  "rushing_yards_after_contact", "rushing_yards_after_contact_avg", "rushing_broken_tackles"],
     }
     for stat_type, cols in specs.items():
-        frames = [pd.read_parquet(RAW_DIR / f"pfr_advstats_week_{stat_type}_{s}.parquet") for s in SEASONS]
-        adv = pd.concat(frames, ignore_index=True)
+        adv = _load_optional([RAW_DIR / f"pfr_advstats_week_{stat_type}_{s}.parquet" for s in seasons])
+        if adv is None:
+            print(f"  pfr_advstats_{stat_type}: SKIPPED (no files found for these seasons)")
+            continue
         prefixed = {c: f"pfr_{stat_type}_{c}" for c in cols}
         adv = adv.rename(columns=prefixed)
         df = merge_via_pfr_crosswalk(df, adv, f"pfr_advstats_{stat_type}", list(prefixed.values()), crosswalk)
     return df
 
 
-def merge_injuries(df: pd.DataFrame) -> pd.DataFrame:
-    frames = [pd.read_parquet(RAW_DIR / f"injuries_{s}.parquet") for s in SEASONS]
-    inj = pd.concat(frames, ignore_index=True)
+def merge_injuries(df: pd.DataFrame, seasons: list[int]) -> pd.DataFrame:
+    inj = _load_optional([RAW_DIR / f"injuries_{s}.parquet" for s in seasons])
+    if inj is None:
+        print("  injuries: SKIPPED (no files found for these seasons)")
+        return df
     inj = inj[["gsis_id", "season", "week", "report_status", "report_primary_injury",
                "practice_status"]].dropna(subset=["gsis_id"]).drop_duplicates(subset=["gsis_id", "season", "week"])
     inj["_on_injury_report"] = True
@@ -145,9 +167,25 @@ def merge_injuries(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def merge_depth_charts(df: pd.DataFrame) -> pd.DataFrame:
-    frames = [pd.read_parquet(RAW_DIR / f"depth_charts_{s}.parquet") for s in SEASONS]
+def merge_depth_charts(df: pd.DataFrame, seasons: list[int]) -> pd.DataFrame:
+    required = {"gsis_id", "season", "week", "depth_position"}
+    frames = []
+    for s in seasons:
+        p = RAW_DIR / f"depth_charts_{s}.parquet"
+        if not p.exists():
+            continue
+        f = pd.read_parquet(p)
+        if not required.issubset(f.columns):
+            print(f"  depth_charts_{s}: SKIPPED (nflverse changed this file's schema -- "
+                  f"missing {sorted(required - set(f.columns))}; not the historical format this pipeline expects)")
+            continue
+        frames.append(f)
+    if not frames:
+        print("  depth_charts: SKIPPED (no usable files found for these seasons)")
+        return df
     dc = pd.concat(frames, ignore_index=True)
+    if "formation" not in dc.columns:
+        dc["formation"] = pd.NA
     dc = dc[["gsis_id", "season", "week", "depth_position", "formation"]].dropna(
         subset=["gsis_id"]
     ).drop_duplicates(subset=["gsis_id", "season", "week"])
@@ -158,7 +196,7 @@ def merge_depth_charts(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_routes_run_proxy(crosswalk_positions: pd.DataFrame) -> pd.DataFrame:
+def build_routes_run_proxy(crosswalk_positions: pd.DataFrame, seasons: list[int]) -> pd.DataFrame:
     """Free-data proxy for 'routes run': plays where a non-lineman was on the
     field for a pass play (per nflverse's charted participation data).
 
@@ -171,7 +209,7 @@ def build_routes_run_proxy(crosswalk_positions: pd.DataFrame) -> pd.DataFrame:
     """
     OL_POSITIONS = {"T", "G", "C", "OL", "OT", "OG"}
     frames = []
-    for s in SEASONS:
+    for s in seasons:
         part_path = RAW_DIR / f"pbp_participation_{s}.parquet"
         if not part_path.exists():
             continue
@@ -199,9 +237,9 @@ def build_routes_run_proxy(crosswalk_positions: pd.DataFrame) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def merge_schedule_context(df: pd.DataFrame) -> pd.DataFrame:
+def merge_schedule_context(df: pd.DataFrame, seasons: list[int]) -> pd.DataFrame:
     sched = pd.read_parquet(RAW_DIR / "schedules.parquet")
-    sched = sched[sched["season"].isin(SEASONS)].copy()
+    sched = sched[sched["season"].isin(seasons)].copy()
 
     home = sched.rename(columns={
         "home_team": "team", "away_team": "opponent", "home_rest": "rest_days",
@@ -245,31 +283,44 @@ def merge_draft_context(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def main() -> None:
-    print("Loading backbone (player_stats)...")
-    df = load_backbone()
-    print(f"  backbone: {len(df)} player-weeks, seasons {sorted(df.season.unique())}")
+def run_pipeline(seasons: list[int] | None = None, backbone: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Build the merged player-week table for `seasons`.
+
+    `backbone` defaults to the official player_stats file(s) for `seasons`
+    (the validated research path). Pass a custom backbone -- e.g. one built
+    from play-by-play for a season whose official weekly stats file isn't
+    published yet -- to reuse the exact same merge logic for a live/current
+    season. The custom backbone must have the same columns as
+    load_backbone() would produce (gsis_id, season, week, season_type,
+    recent_team, position, and the raw box-score columns).
+    """
+    seasons = seasons if seasons is not None else SEASONS
+    UNMATCHED_LOG.clear()
+
+    print(f"Loading backbone for seasons {seasons}...")
+    df = load_backbone(seasons) if backbone is None else backbone.copy()
+    print(f"  backbone: {len(df)} player-weeks")
 
     print("Building ID crosswalk from weekly rosters...")
-    crosswalk = build_id_crosswalk()
+    crosswalk = build_id_crosswalk(seasons)
 
     print("Merging Next Gen Stats...")
-    df = merge_ngs(df)
+    df = merge_ngs(df, seasons)
 
     print("Merging snap counts (via pfr_id crosswalk)...")
-    df = merge_snap_counts(df, crosswalk)
+    df = merge_snap_counts(df, crosswalk, seasons)
 
     print("Merging PFR advanced stats (via pfr_id crosswalk)...")
-    df = merge_pfr_advstats(df, crosswalk)
+    df = merge_pfr_advstats(df, crosswalk, seasons)
 
     print("Merging injury reports...")
-    df = merge_injuries(df)
+    df = merge_injuries(df, seasons)
 
     print("Merging depth charts...")
-    df = merge_depth_charts(df)
+    df = merge_depth_charts(df, seasons)
 
     print("Building routes-run proxy from play participation data...")
-    routes = build_routes_run_proxy(crosswalk[["season", "gsis_id", "position"]])
+    routes = build_routes_run_proxy(crosswalk[["season", "gsis_id", "position"]], seasons)
     if len(routes):
         total = len(df)
         df = df.merge(routes, on=["gsis_id", "season", "week"], how="left")
@@ -280,10 +331,16 @@ def main() -> None:
         print("  routes_run_proxy: SKIPPED (pbp_participation_{season}.parquet not found in data/raw)")
 
     print("Merging schedule/context (rest, roof, surface, weather, market lines)...")
-    df = merge_schedule_context(df)
+    df = merge_schedule_context(df, seasons)
 
     print("Merging draft context...")
     df = merge_draft_context(df)
+
+    return df
+
+
+def main() -> None:
+    df = run_pipeline(SEASONS)
 
     print("\nBackbone-side coverage (fraction of skill-position player-weeks with a non-null value):")
     skill = df[df["position"].isin(["QB", "RB", "WR", "TE"])]

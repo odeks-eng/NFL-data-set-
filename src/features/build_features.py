@@ -1,4 +1,4 @@
-"""Feature engineering on top of data/processed/player_week_merged.parquet.
+"""Feature engineering on top of a merged player-week table.
 
 Every feature that will be used to *predict* a week's outcome is built so it
 only uses information available before that week's kickoff:
@@ -9,6 +9,10 @@ only uses information available before that week's kickoff:
   - Context features that are legitimately known pre-kickoff (rest days,
     roof/surface, temp/wind, injury/depth-chart status, market lines) are
     used as-is -- they describe the upcoming game, not its outcome.
+
+build_features(seasons, merged_df) is reused by src/predict/live_predict.py
+for a single current season; main() below is the historical research path
+(config.SEASONS, reading/writing data/processed/player_week_*.parquet).
 
 Run: python -m src.features.build_features
 """
@@ -25,8 +29,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.config import PROCESSED_DIR, RAW_DIR, SEASONS  # noqa: E402
 
 
-def load_pbp() -> pd.DataFrame:
-    frames = [pd.read_parquet(RAW_DIR / f"pbp_{s}.parquet") for s in SEASONS]
+def load_pbp(seasons: list[int]) -> pd.DataFrame:
+    frames = [pd.read_parquet(RAW_DIR / f"pbp_{s}.parquet") for s in seasons]
     return pd.concat(frames, ignore_index=True)
 
 
@@ -42,12 +46,12 @@ def build_team_week_context(pbp: pd.DataFrame) -> pd.DataFrame:
     return ctx.rename(columns={"posteam": "team"})
 
 
-def build_position_lookup() -> pd.DataFrame:
+def build_position_lookup(seasons: list[int]) -> pd.DataFrame:
     """gsis_id+season -> WR/TE/RB/other, from weekly rosters. Used to find
     *who* a defense's pass plays were thrown at, not just how many EPA they
     allowed in aggregate."""
     frames = []
-    for s in SEASONS:
+    for s in seasons:
         wr = pd.read_parquet(RAW_DIR / f"weekly_rosters_{s}.parquet")
         frames.append(wr[["season", "gsis_id", "position"]].dropna(subset=["gsis_id"]))
     lookup = pd.concat(frames, ignore_index=True).drop_duplicates(subset=["season", "gsis_id"])
@@ -158,11 +162,9 @@ def add_player_rolling_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def main() -> None:
-    df = pd.read_parquet(PROCESSED_DIR / "player_week_merged.parquet")
-    print(f"Loaded merged table: {df.shape}")
-
-    pbp = load_pbp()
+def build_features(seasons: list[int], merged_df: pd.DataFrame) -> pd.DataFrame:
+    df = merged_df
+    pbp = load_pbp(seasons)
 
     print("Building team offensive context (pace, pass rate, EPA/play)...")
     team_ctx = build_team_week_context(pbp)
@@ -173,7 +175,7 @@ def main() -> None:
     def_ctx = add_causal_rolling(def_ctx, "team", ["def_pass_epa_allowed", "def_rush_epa_allowed"])
 
     print("Building position-specific opponent defensive context (EPA allowed by WR/TE/RB target)...")
-    position_lookup = build_position_lookup()
+    position_lookup = build_position_lookup(seasons)
     def_ctx_pos = build_defense_week_context_by_target_position(pbp, position_lookup)
     def_ctx_pos = add_causal_rolling(def_ctx_pos, ["team", "position_group"], ["def_epa_allowed_to_position"])
 
@@ -217,6 +219,14 @@ def main() -> None:
 
     print("Building causal rolling windows for player usage/efficiency metrics...")
     df = add_player_rolling_features(df)
+    return df
+
+
+def main() -> None:
+    merged = pd.read_parquet(PROCESSED_DIR / "player_week_merged.parquet")
+    print(f"Loaded merged table: {merged.shape}")
+
+    df = build_features(SEASONS, merged)
 
     out_path = PROCESSED_DIR / "player_week_features.parquet"
     df.to_parquet(out_path, index=False)

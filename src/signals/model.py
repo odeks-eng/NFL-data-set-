@@ -151,6 +151,31 @@ def run_spec(df: pd.DataFrame, spec: dict, predictor_cols: list[str]) -> dict:
     }
 
 
+def get_predictor_cols(df: pd.DataFrame) -> list[str]:
+    cols = [c for c in df.columns if c.endswith(PREDICTOR_SUFFIXES)] + \
+        [c for c in CONTEXT_COLS if c in df.columns]
+    return sorted(set(cols))
+
+
+def train_final_model(df: pd.DataFrame, spec: dict, predictor_cols: list[str],
+                       seasons: list[int]) -> tuple[HistGradientBoostingRegressor, list[str]]:
+    """Fit on ALL of `seasons` (no holdout) -- for production/live use once
+    the architecture has already been validated by run_spec()'s CV +
+    holdout split. Returns the fitted model and the predictor columns it
+    was actually trained on (some get dropped per position group)."""
+    sub = df[df["position"].isin(spec["positions"]) & df["season"].isin(seasons)].copy()
+    sub = sub.dropna(subset=[spec["target"]])
+    usable = [c for c in predictor_cols if sub[c].notna().sum() >= 2 and sub[c].nunique(dropna=True) >= 2]
+
+    X = build_predictor_matrix(sub, usable)
+    y = sub[spec["target"]]
+    model = HistGradientBoostingRegressor(
+        categorical_features=[c for c in CATEGORICAL_COLS if c in X.columns], **HGB_PARAMS
+    )
+    model.fit(X, y)
+    return model, usable
+
+
 def main() -> None:
     df = pd.read_parquet(PROCESSED_DIR / "player_week_features.parquet")
     df = df[df["season_type"] == "REG"].copy()
