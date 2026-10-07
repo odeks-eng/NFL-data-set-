@@ -156,9 +156,8 @@ def main() -> None:
     # 10. Schedules (rest days, roof, surface, divisional game)
     pull(
         "schedules",
-        NFLVERSE_RELEASES + "/schedules/games.csv",
+        NFLVERSE_RELEASES + "/schedules/games.parquet",
         RAW_DIR / "schedules.parquet",
-        reader=pd.read_csv,
     )
 
     # 11. Historical game odds/lines (game-level market context)
