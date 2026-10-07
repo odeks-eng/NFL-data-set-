@@ -46,6 +46,10 @@ python -m src.signals.model              # -> multivariate GBM model, data/proce
 `src/config.py` controls the season range and the train/holdout split used
 in signal testing.
 
+**On Windows:** double-click `Run.bat` (or run it from a terminal) instead
+of the commands above -- it creates a `.venv` virtual environment if one
+doesn't exist, installs dependencies into it, and runs the same pipeline.
+
 ## Forward-looking predictions (current season)
 
 ```bash
