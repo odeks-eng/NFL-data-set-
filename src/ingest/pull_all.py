@@ -6,8 +6,8 @@ Every source is pulled straight from its official distribution (nflverse's
 GitHub Releases, or the specific upstream repos nflverse itself points at —
 see docs/source_inventory.md). Nothing here scrapes a website; everything is
 a direct HTTPS GET of a versioned CSV/Parquet file, which is the intended,
-documented way to consume this data (it's exactly what the `nfl_data_py`
-and `nflreadr` packages do under the hood).
+documented way to consume this data (it's exactly what the `nflreadpy`
+(Python) and `nflreadr` (R) packages do under the hood).
 """
 
 from __future__ import annotations
@@ -156,9 +156,8 @@ def main() -> None:
     # 10. Schedules (rest days, roof, surface, divisional game)
     pull(
         "schedules",
-        NFLVERSE_RELEASES + "/schedules/games.csv",
+        NFLVERSE_RELEASES + "/schedules/games.parquet",
         RAW_DIR / "schedules.parquet",
-        reader=pd.read_csv,
     )
 
     # 11. Historical game odds/lines (game-level market context)

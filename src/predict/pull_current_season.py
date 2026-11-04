@@ -48,7 +48,7 @@ def pull_season(season: int) -> None:
         _pull(NFLVERSE_RELEASES + f"/pfr_advstats/advstats_week_{stat_type}_{season}.parquet",
               RAW_DIR / f"pfr_advstats_week_{stat_type}_{season}.parquet")
         time.sleep(0.2)
-    _pull(NFLVERSE_RELEASES + "/schedules/games.csv", RAW_DIR / "schedules.parquet", reader=pd.read_csv)
+    _pull(NFLVERSE_RELEASES + "/schedules/games.parquet", RAW_DIR / "schedules.parquet")
     for stat_type in ["passing", "rushing", "receiving"]:
         _pull(NFLVERSE_RELEASES + f"/nextgen_stats/ngs_{stat_type}.parquet", RAW_DIR / f"ngs_{stat_type}.parquet")
         time.sleep(0.2)
@@ -58,6 +58,24 @@ def pull_season(season: int) -> None:
     if not part_ok:
         print("  (routes_run_proxy will be null for this season -- pbp_participation not "
               "published yet, which is normal early in a season)")
+
+    # Unlike the sources above, these three are hard requirements of the rest
+    # of the pipeline (no graceful-skip handling downstream) -- fail loudly
+    # and specifically here instead of a confusing traceback several modules
+    # later if nflverse ever renames one of these release assets again.
+    required = {
+        "play-by-play": RAW_DIR / f"pbp_{season}.parquet",
+        "weekly rosters": RAW_DIR / f"weekly_rosters_{season}.parquet",
+        "schedules": RAW_DIR / "schedules.parquet",
+    }
+    missing = [name for name, path in required.items() if not path.exists()]
+    if missing:
+        raise RuntimeError(
+            f"Required source(s) failed to pull and have no fallback: {', '.join(missing)}. "
+            "Check the [SKIP] lines above for the actual HTTP error -- nflverse likely renamed "
+            "or moved a release asset (this has happened before; see pull_all.py/this file's "
+            "history for the schedules.csv -> games.parquet rename)."
+        )
 
 
 if __name__ == "__main__":
